@@ -3,6 +3,8 @@ using AgriGuard.API.DTOs;
 using AgriGuard.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace AgriGuard.API.Controllers
 {
@@ -87,6 +89,38 @@ namespace AgriGuard.API.Controllers
             {
                 message = "User plant created successfully and care tasks generated"
             });
+        }
+
+        [Authorize]
+        [HttpGet("my")]
+        public async Task<IActionResult> GetMyPlants()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var userPlants = await _context.UserPlants
+                .Include(up => up.User)
+                .Include(up => up.Crop)
+                .Where(up => up.UserId == userId)
+                .Select(up => new
+                {
+                    up.Id,
+                    up.UserId,
+                    UserName = up.User.FullName,
+                    up.CropId,
+                    CropName = up.Crop.Name,
+                    up.PlantingDate,
+                    up.Status
+                })
+                .ToListAsync();
+
+            return Ok(userPlants);
         }
     }
 }

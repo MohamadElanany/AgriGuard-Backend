@@ -14,7 +14,17 @@ namespace AgriGuard.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+            // Add services to the container
+            
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowFrontend", policy =>
+                {
+                    policy.WithOrigins("http://localhost:5173")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+            });
 
             builder.Services.AddControllers();
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -84,6 +94,8 @@ namespace AgriGuard.API
             app.UseHttpsRedirection();
 
             app.UseStaticFiles();
+
+            app.UseCors("AllowFrontend");
 
             app.UseAuthentication();
 

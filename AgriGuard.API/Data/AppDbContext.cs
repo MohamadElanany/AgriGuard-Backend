@@ -30,10 +30,9 @@ namespace AgriGuard.API.Data
 
             modelBuilder.Entity<Comment>()
                 .HasOne(c => c.Post)
-                .WithMany()
+                .WithMany(p => p.Comments)
                 .HasForeignKey(c => c.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
-
 
             modelBuilder.Entity<Like>()
                 .HasOne(l => l.User)
@@ -43,7 +42,7 @@ namespace AgriGuard.API.Data
 
             modelBuilder.Entity<Like>()
                 .HasOne(l => l.Post)
-                .WithMany()
+                .WithMany(p => p.Likes)
                 .HasForeignKey(l => l.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
         }

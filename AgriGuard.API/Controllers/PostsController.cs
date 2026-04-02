@@ -1,8 +1,10 @@
 ﻿using AgriGuard.API.Data;
 using AgriGuard.API.DTOs;
 using AgriGuard.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace AgriGuard.API.Controllers
 {
@@ -19,11 +21,25 @@ namespace AgriGuard.API.Controllers
             _environment = environment;
         }
 
+        [Authorize]
         [HttpGet]
         public async Task<IActionResult> GetAllPosts()
         {
-            var posts = await _context.Posts
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            var query = _context.Posts
                 .Include(p => p.User)
+                .Include(p => p.Comments)
+                    .ThenInclude(c => c.User)
+                .Include(p => p.Likes)
+                .AsQueryable();
+
+            if (userRole != "Admin")
+            {
+                query = query.Where(p => p.Status == "Approved");
+            }
+
+            var posts = await query
                 .OrderByDescending(p => p.CreatedAt)
                 .Select(p => new
                 {
@@ -33,7 +49,19 @@ namespace AgriGuard.API.Controllers
                     p.Content,
                     p.ImageUrl,
                     p.Status,
-                    p.CreatedAt
+                    p.CreatedAt,
+                    LikesCount = p.Likes.Count,
+                    Comments = p.Comments
+                        .OrderByDescending(c => c.CreatedAt)
+                        .Select(c => new
+                        {
+                            c.Id,
+                            c.UserId,
+                            UserName = c.User.FullName,
+                            c.Content,
+                            c.CreatedAt
+                        })
+                        .ToList()
                 })
                 .ToListAsync();
 
@@ -90,6 +118,26 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        [Authorize(Roles = "Admin")]
+        [HttpPut("{postId}/approve")]
+        public async Task<IActionResult> ApprovePost(int postId)
+        {
+            var post = await _context.Posts.FindAsync(postId);
+
+            if (post == null)
+            {
+                return NotFound(new { message = "Post not found" });
+            }
+
+            post.Status = "Approved";
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Post approved successfully"
+            });
+        }
 
         [HttpPost("{postId}/comments")]
         public async Task<IActionResult> AddComment(int postId, CreateCommentDto dto)

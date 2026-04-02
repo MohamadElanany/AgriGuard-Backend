@@ -3,6 +3,7 @@ using AgriGuard.API.DTOs;
 using AgriGuard.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AgriGuard.API.Controllers
 {
@@ -24,6 +25,7 @@ namespace AgriGuard.API.Controllers
             return Ok(crops);
         }
 
+        [Authorize(Roles = "Admin")]
         [HttpPost]
         public async Task<IActionResult> CreateCrop(CreateCropDto dto)
         {
