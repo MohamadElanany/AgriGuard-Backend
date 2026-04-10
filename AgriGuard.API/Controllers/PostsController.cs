@@ -39,6 +39,14 @@ namespace AgriGuard.API.Controllers
                 query = query.Where(p => p.Status == "Approved");
             }
 
+            var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int currentUserId = 0;
+
+            if (!string.IsNullOrEmpty(currentUserIdClaim))
+            {
+                currentUserId = int.Parse(currentUserIdClaim);
+            }
+
             var posts = await query
                 .OrderByDescending(p => p.CreatedAt)
                 .Select(p => new
@@ -50,7 +58,10 @@ namespace AgriGuard.API.Controllers
                     p.ImageUrl,
                     p.Status,
                     p.CreatedAt,
+                    ProfileImageUrl = p.User.ProfileImageUrl,
                     LikesCount = p.Likes.Count,
+                    CommentsCount = p.Comments.Count,
+                    IsLikedByCurrentUser = p.Likes.Any(l => l.UserId == currentUserId),
                     Comments = p.Comments
                         .OrderByDescending(c => c.CreatedAt)
                         .Select(c => new
@@ -59,7 +70,8 @@ namespace AgriGuard.API.Controllers
                             c.UserId,
                             UserName = c.User.FullName,
                             c.Content,
-                            c.CreatedAt
+                            c.CreatedAt,
+                            ProfileImageUrl = c.User.ProfileImageUrl
                         })
                         .ToList()
                 })
@@ -68,13 +80,28 @@ namespace AgriGuard.API.Controllers
             return Ok(posts);
         }
 
+        [Authorize]
         [HttpPost]
         public async Task<IActionResult> CreatePost([FromForm] CreatePostDto dto)
         {
-            var userExists = await _context.Users.AnyAsync(u => u.Id == dto.UserId);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Content) && dto.Image == null)
+            {
+                return BadRequest(new { message = "Post content or image is required" });
             }
 
             string imageUrl = string.Empty;
@@ -101,8 +128,8 @@ namespace AgriGuard.API.Controllers
 
             var post = new Post
             {
-                UserId = dto.UserId,
-                Content = dto.Content,
+                UserId = userId,
+                Content = dto.Content ?? string.Empty,
                 ImageUrl = imageUrl,
                 Status = "Pending",
                 CreatedAt = DateTime.UtcNow
@@ -130,7 +157,6 @@ namespace AgriGuard.API.Controllers
             }
 
             post.Status = "Approved";
-
             await _context.SaveChangesAsync();
 
             return Ok(new
@@ -139,25 +165,115 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        [Authorize(Roles = "Admin")]
+        [HttpPut("{postId}/reject")]
+        public async Task<IActionResult> RejectPost(int postId)
+        {
+            var post = await _context.Posts.FindAsync(postId);
+
+            if (post == null)
+            {
+                return NotFound(new { message = "Post not found" });
+            }
+
+            post.Status = "Rejected";
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Post rejected successfully"
+            });
+        }
+
+        [Authorize]
+        [HttpDelete("{postId}")]
+        public async Task<IActionResult> DeletePost(int postId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var post = await _context.Posts.FindAsync(postId);
+
+            if (post == null)
+            {
+                return NotFound(new { message = "Post not found" });
+            }
+
+            if (userRole != "Admin" && post.UserId != userId)
+            {
+                return Forbid();
+            }
+
+            if (!string.IsNullOrWhiteSpace(post.ImageUrl))
+            {
+                var relativePath = post.ImageUrl.TrimStart('/').Replace("/", Path.DirectorySeparatorChar.ToString());
+                var fullPath = Path.Combine(_environment.WebRootPath, relativePath);
+
+                if (System.IO.File.Exists(fullPath))
+                {
+                    System.IO.File.Delete(fullPath);
+                }
+            }
+
+            _context.Posts.Remove(post);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Post deleted successfully"
+            });
+        }
+
+        [Authorize]
         [HttpPost("{postId}/comments")]
         public async Task<IActionResult> AddComment(int postId, CreateCommentDto dto)
         {
-            var postExists = await _context.Posts.AnyAsync(p => p.Id == postId);
-            if (!postExists)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var post = await _context.Posts.FindAsync(postId);
+            if (post == null)
             {
                 return BadRequest(new { message = "Post not found" });
             }
 
-            var userExists = await _context.Users.AnyAsync(u => u.Id == dto.UserId);
+            var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
             }
 
+            if (string.IsNullOrWhiteSpace(dto.Content))
+            {
+                return BadRequest(new { message = "Comment content is required" });
+            }
+
+            if (post.Status != "Approved")
+            {
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                if (userRole != "Admin")
+                {
+                    return BadRequest(new { message = "You cannot comment on an unapproved post" });
+                }
+            }
+
             var comment = new Comment
             {
                 PostId = postId,
-                UserId = dto.UserId,
+                UserId = userId,
                 Content = dto.Content,
                 CreatedAt = DateTime.UtcNow
             };
@@ -171,12 +287,21 @@ namespace AgriGuard.API.Controllers
             });
         }
 
-
+        [Authorize]
         [HttpPost("{postId}/like")]
-        public async Task<IActionResult> AddLike(int postId, int userId)
+        public async Task<IActionResult> AddLike(int postId)
         {
-            var postExists = await _context.Posts.AnyAsync(p => p.Id == postId);
-            if (!postExists)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var post = await _context.Posts.FindAsync(postId);
+            if (post == null)
             {
                 return BadRequest(new { message = "Post not found" });
             }
@@ -185,6 +310,15 @@ namespace AgriGuard.API.Controllers
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
+            }
+
+            if (post.Status != "Approved")
+            {
+                var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                if (userRole != "Admin")
+                {
+                    return BadRequest(new { message = "You cannot like an unapproved post" });
+                }
             }
 
             var alreadyLiked = await _context.Likes
@@ -208,6 +342,36 @@ namespace AgriGuard.API.Controllers
             return Ok(new
             {
                 message = "Post liked successfully"
+            });
+        }
+
+        [Authorize]
+        [HttpDelete("{postId}/like")]
+        public async Task<IActionResult> RemoveLike(int postId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var like = await _context.Likes
+                .FirstOrDefaultAsync(l => l.PostId == postId && l.UserId == userId);
+
+            if (like == null)
+            {
+                return NotFound(new { message = "Like not found" });
+            }
+
+            _context.Likes.Remove(like);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Like removed successfully"
             });
         }
     }

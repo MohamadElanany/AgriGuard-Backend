@@ -2,9 +2,9 @@
 {
     public class CreateUserPlantDto
     {
-        public int UserId { get; set; }
-
         public int CropId { get; set; }
+
+        public string CustomTitle { get; set; } = string.Empty;
 
         public DateTime PlantingDate { get; set; }
     }

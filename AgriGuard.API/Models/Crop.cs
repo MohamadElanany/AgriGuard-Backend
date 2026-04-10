@@ -9,5 +9,11 @@
         public string Description { get; set; } = string.Empty;
 
         public string ImageUrl { get; set; } = string.Empty;
+
+        public int SunHours { get; set; }
+
+        public string WaterLevel { get; set; } = string.Empty;
+
+        public int GrowthDurationDays { get; set; }
     }
 }

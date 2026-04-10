@@ -40,10 +40,20 @@ namespace AgriGuard.API.Controllers
             return Ok(userPlants);
         }
 
+        [Authorize]
         [HttpPost]
         public async Task<IActionResult> CreateUserPlant(CreateUserPlantDto dto)
         {
-            var userExists = await _context.Users.AnyAsync(u => u.Id == dto.UserId);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
@@ -57,10 +67,12 @@ namespace AgriGuard.API.Controllers
 
             var userPlant = new UserPlant
             {
-                UserId = dto.UserId,
+                UserId = userId,
                 CropId = dto.CropId,
+                CustomTitle = dto.CustomTitle ?? string.Empty,
                 PlantingDate = dto.PlantingDate,
-                Status = "Healthy"
+                Status = "InProgress",
+                ProgressPercentage = 0
             };
 
             await _context.UserPlants.AddAsync(userPlant);
@@ -87,7 +99,8 @@ namespace AgriGuard.API.Controllers
 
             return Ok(new
             {
-                message = "User plant created successfully and care tasks generated"
+                message = "Plant session created successfully",
+                userPlantId = userPlant.Id
             });
         }
 
@@ -115,12 +128,72 @@ namespace AgriGuard.API.Controllers
                     UserName = up.User.FullName,
                     up.CropId,
                     CropName = up.Crop.Name,
+                    CropImageUrl = up.Crop.ImageUrl,
+                    up.CustomTitle,
                     up.PlantingDate,
-                    up.Status
+                    up.Status,
+                    up.ProgressPercentage,
+                    up.Crop.SunHours,
+                    up.Crop.WaterLevel,
+                    up.Crop.GrowthDurationDays
                 })
                 .ToListAsync();
 
             return Ok(userPlants);
         }
+
+        [Authorize]
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetUserPlantById(int id)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var userPlant = await _context.UserPlants
+                .Include(up => up.Crop)
+                .FirstOrDefaultAsync(up => up.Id == id && up.UserId == userId);
+
+            if (userPlant == null)
+            {
+                return NotFound(new { message = "Plant session not found" });
+            }
+
+            var tasks = await _context.CareTasks
+                .Where(t => t.UserPlantId == userPlant.Id)
+                .OrderBy(t => t.DueDate)
+                .Select(t => new
+                {
+                    t.Id,
+                    t.UserPlantId,
+                    t.Title,
+                    t.Description,
+                    t.DueDate,
+                    t.IsCompleted
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                userPlant.Id,
+                userPlant.CropId,
+                CropName = userPlant.Crop.Name,
+                CropImageUrl = userPlant.Crop.ImageUrl,
+                userPlant.CustomTitle,
+                userPlant.PlantingDate,
+                userPlant.Status,
+                userPlant.ProgressPercentage,
+                userPlant.Crop.SunHours,
+                userPlant.Crop.WaterLevel,
+                userPlant.Crop.GrowthDurationDays,
+                Tasks = tasks
+            });
+        }
+
     }
 }

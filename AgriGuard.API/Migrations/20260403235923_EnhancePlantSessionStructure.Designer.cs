@@ -4,6 +4,7 @@ using AgriGuard.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgriGuard.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260403235923_EnhancePlantSessionStructure")]
+    partial class EnhancePlantSessionStructure
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -163,22 +166,10 @@ namespace AgriGuard.API.Migrations
                     b.Property<double>("Confidence")
                         .HasColumnType("float");
 
-                    b.Property<string>("Country")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CropName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("DiagnosedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DiseaseName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Governorate")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -190,7 +181,7 @@ namespace AgriGuard.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("UserPlantId")
+                    b.Property<int>("UserPlantId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -390,7 +381,9 @@ namespace AgriGuard.API.Migrations
                 {
                     b.HasOne("AgriGuard.API.Models.UserPlant", "UserPlant")
                         .WithMany()
-                        .HasForeignKey("UserPlantId");
+                        .HasForeignKey("UserPlantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("UserPlant");
                 });

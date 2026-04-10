@@ -9,5 +9,7 @@
         public string Description { get; set; } = string.Empty;
 
         public int DaysAfterPlanting { get; set; }
+
+        public string TaskCategory { get; set; } = string.Empty;
     }
 }

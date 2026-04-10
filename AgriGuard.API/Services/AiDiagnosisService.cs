@@ -13,9 +13,11 @@ namespace AgriGuard.API.Services
             _httpClient = httpClient;
         }
 
-        public async Task<AiPredictionResponse?> PredictDiseaseAsync(IFormFile image)
+        public async Task<AiPredictionResponse?> PredictDiseaseAsync(string plantName, IFormFile image)
         {
             using var content = new MultipartFormDataContent();
+
+            content.Add(new StringContent(plantName), "plant_name");
 
             using var stream = image.OpenReadStream();
             using var streamContent = new StreamContent(stream);
@@ -32,6 +34,7 @@ namespace AgriGuard.API.Services
             }
 
             var jsonResponse = await response.Content.ReadAsStringAsync();
+            Console.WriteLine(jsonResponse);
 
             var result = JsonSerializer.Deserialize<AiPredictionResponse>(
                 jsonResponse,

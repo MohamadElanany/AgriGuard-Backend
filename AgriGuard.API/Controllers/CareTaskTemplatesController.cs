@@ -1,6 +1,7 @@
 ﻿using AgriGuard.API.Data;
 using AgriGuard.API.DTOs;
 using AgriGuard.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -29,13 +30,15 @@ namespace AgriGuard.API.Controllers
                     CropName = t.Crop.Name,
                     t.Title,
                     t.Description,
-                    t.DaysAfterPlanting
+                    t.DaysAfterPlanting,
+                    t.TaskCategory
                 })
                 .ToListAsync();
 
             return Ok(templates);
         }
 
+        [Authorize(Roles = "Admin")]
         [HttpPost]
         public async Task<IActionResult> CreateTemplate(CreateCareTaskTemplateDto dto)
         {
@@ -50,7 +53,8 @@ namespace AgriGuard.API.Controllers
                 CropId = dto.CropId,
                 Title = dto.Title,
                 Description = dto.Description,
-                DaysAfterPlanting = dto.DaysAfterPlanting
+                DaysAfterPlanting = dto.DaysAfterPlanting,
+                TaskCategory = dto.TaskCategory
             };
 
             await _context.CareTaskTemplates.AddAsync(template);

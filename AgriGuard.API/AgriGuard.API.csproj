@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <Folder Include="wwwroot\images\diagnoses\" />
+    <Folder Include="wwwroot\images\crops\" />
+    <Folder Include="wwwroot\images\profiles\" />
     <Folder Include="wwwroot\images\posts\" />
   </ItemGroup>
 

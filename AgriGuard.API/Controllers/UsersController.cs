@@ -51,6 +51,7 @@ namespace AgriGuard.API.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        [Authorize(Roles = "Admin")]
         [HttpGet]
         public async Task<IActionResult> GetAllUsers()
         {
@@ -154,14 +155,158 @@ namespace AgriGuard.API.Controllers
 
         [Authorize]
         [HttpGet("profile")]
-        public IActionResult GetProfile()
+        public async Task<IActionResult> GetProfile()
         {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            var user = await _context.Users.FindAsync(userId);
+
             return Ok(new
             {
                 message = "You are authenticated",
-                user = User.Identity?.Name
+                user = new
+                {
+                    user.Id,
+                    user.FullName,
+                    user.Email,
+                    user.Country,
+                    user.Governorate,
+                    user.ProfileImageUrl,
+                    user.Bio
+                }
             });
         }
 
+        [Authorize]
+        [HttpPut("update-profile")]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            var user = await _context.Users.FindAsync(userId);
+
+            if (user == null)
+                return NotFound();
+
+            user.FullName = dto.FullName;
+            user.Country = dto.Country;
+            user.Governorate = dto.Governorate;
+            user.Bio = dto.Bio;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Profile updated successfully" });
+        }
+
+        [Authorize]
+        [HttpPost("upload-profile-image")]
+        public async Task<IActionResult> UploadProfileImage(IFormFile image)
+        {
+            if (image == null || image.Length == 0)
+                return BadRequest("No image uploaded");
+
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            var uploadsFolder = Path.Combine("wwwroot", "images", "profiles");
+            if (!Directory.Exists(uploadsFolder))
+            {
+                Directory.CreateDirectory(uploadsFolder);
+            }
+
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await image.CopyToAsync(stream);
+            }
+
+            var user = await _context.Users.FindAsync(userId);
+            user.ProfileImageUrl = $"/images/profiles/{fileName}";
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { imageUrl = user.ProfileImageUrl });
+        }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetUserById(int id)
+        {
+            var user = await _context.Users
+                .Where(u => u.Id == id)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.Country,
+                    u.Governorate,
+                    u.ProfileImageUrl,
+                    u.Bio,
+                    u.CreatedAt
+                })
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            return Ok(user);
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPut("{id}/block")]
+        public async Task<IActionResult> BlockUser(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            if (user.Role == "Admin")
+            {
+                return BadRequest(new { message = "Admin user cannot be blocked" });
+            }
+
+            if (user.IsBlocked)
+            {
+                return BadRequest(new { message = "User is already blocked" });
+            }
+
+            user.IsBlocked = true;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "User blocked successfully"
+            });
+        }
+
+        [Authorize(Roles = "Admin")]
+        [HttpPut("{id}/unblock")]
+        public async Task<IActionResult> UnblockUser(int id)
+        {
+            var user = await _context.Users.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            if (!user.IsBlocked)
+            {
+                return BadRequest(new { message = "User is not blocked" });
+            }
+
+            user.IsBlocked = false;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "User unblocked successfully"
+            });
+        }
     }
 }

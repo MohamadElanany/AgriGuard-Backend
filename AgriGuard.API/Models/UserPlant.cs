@@ -8,11 +8,14 @@
 
         public int CropId { get; set; }
 
+        public string CustomTitle { get; set; } = string.Empty;
+
         public DateTime PlantingDate { get; set; }
 
-        public string Status { get; set; } = "Healthy";
+        public string Status { get; set; } = "InProgress";
 
-        // Navigation Properties
+        public int ProgressPercentage { get; set; } = 0;
+
         public User User { get; set; }
 
         public Crop Crop { get; set; }

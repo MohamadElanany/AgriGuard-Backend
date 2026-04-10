@@ -2,7 +2,7 @@
 
 namespace AgriGuard.API.DTOs
 {
-    public class CreateCropDto
+    public class UpdateCropDto
     {
         public string Name { get; set; } = string.Empty;
 

@@ -4,6 +4,7 @@ using AgriGuard.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgriGuard.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402214914_AddUserProfileFields")]
+    partial class AddUserProfileFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -72,10 +75,6 @@ namespace AgriGuard.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("TaskCategory")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -129,21 +128,11 @@ namespace AgriGuard.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("GrowthDurationDays")
-                        .HasColumnType("int");
-
                     b.Property<string>("ImageUrl")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("SunHours")
-                        .HasColumnType("int");
-
-                    b.Property<string>("WaterLevel")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -163,22 +152,10 @@ namespace AgriGuard.API.Migrations
                     b.Property<double>("Confidence")
                         .HasColumnType("float");
 
-                    b.Property<string>("Country")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CropName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("DiagnosedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("DiseaseName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Governorate")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -190,7 +167,7 @@ namespace AgriGuard.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("UserPlantId")
+                    b.Property<int>("UserPlantId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -319,15 +296,8 @@ namespace AgriGuard.API.Migrations
                     b.Property<int>("CropId")
                         .HasColumnType("int");
 
-                    b.Property<string>("CustomTitle")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("PlantingDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<int>("ProgressPercentage")
-                        .HasColumnType("int");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -390,7 +360,9 @@ namespace AgriGuard.API.Migrations
                 {
                     b.HasOne("AgriGuard.API.Models.UserPlant", "UserPlant")
                         .WithMany()
-                        .HasForeignKey("UserPlantId");
+                        .HasForeignKey("UserPlantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("UserPlant");
                 });

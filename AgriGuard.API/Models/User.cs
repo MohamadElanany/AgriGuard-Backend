@@ -19,5 +19,9 @@
         public bool IsBlocked { get; set; } = false;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public string? ProfileImageUrl { get; set; }
+
+        public string? Bio { get; set; }
     }
 }

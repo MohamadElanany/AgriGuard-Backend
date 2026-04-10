@@ -12,7 +12,8 @@
 
         public int DaysAfterPlanting { get; set; }
 
-        // Navigation
+        public string TaskCategory { get; set; } = string.Empty;
+
         public Crop Crop { get; set; }
     }
 }

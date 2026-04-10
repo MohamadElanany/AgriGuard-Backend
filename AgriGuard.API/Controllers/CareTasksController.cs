@@ -96,5 +96,48 @@ namespace AgriGuard.API.Controllers
             return Ok(tasks);
         }
 
+
+        [Authorize]
+        [HttpGet("today")]
+        public async Task<IActionResult> GetTodayCareTasks()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var today = DateTime.Today;
+            var tomorrow = today.AddDays(1);
+
+            var tasks = await _context.CareTasks
+                .Include(t => t.UserPlant)
+                    .ThenInclude(up => up.User)
+                .Include(t => t.UserPlant)
+                    .ThenInclude(up => up.Crop)
+                .Where(t => t.UserPlant.UserId == userId
+                            && t.DueDate >= today
+                            && t.DueDate < tomorrow)
+                .Select(t => new
+                {
+                    t.Id,
+                    t.UserPlantId,
+                    UserName = t.UserPlant.User.FullName,
+                    CropName = t.UserPlant.Crop.Name,
+                    CropImageUrl = t.UserPlant.Crop.ImageUrl,
+                    CustomTitle = t.UserPlant.CustomTitle,
+                    t.Title,
+                    t.Description,
+                    t.DueDate,
+                    t.IsCompleted
+                })
+                .ToListAsync();
+
+            return Ok(tasks);
+        }
+
     }
 }
