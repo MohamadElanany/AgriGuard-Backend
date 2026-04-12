@@ -35,6 +35,8 @@ namespace AgriGuard.API
                 client.BaseAddress = new Uri("http://127.0.0.1:8000/");
             });
 
+            builder.Services.AddHttpClient<TreatmentService>();
+
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {

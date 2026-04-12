@@ -16,15 +16,19 @@ namespace AgriGuard.API.Controllers
         private readonly AppDbContext _context;
         private readonly AiDiagnosisService _aiDiagnosisService;
         private readonly IWebHostEnvironment _environment;
+        private readonly TreatmentService _treatmentService;
 
         public DiagnosesController(
             AppDbContext context,
             AiDiagnosisService aiDiagnosisService,
+            TreatmentService treatmentService,
             IWebHostEnvironment environment)
         {
             _context = context;
             _aiDiagnosisService = aiDiagnosisService;
             _environment = environment;
+            _treatmentService = treatmentService;
+
         }
 
         [HttpGet]
@@ -127,7 +131,7 @@ namespace AgriGuard.API.Controllers
                 ImageUrl = imageUrl,
                 DiseaseName = prediction.Disease,
                 Confidence = prediction.Confidence,
-                RecommendedAction = GetRecommendedAction(prediction.Disease),
+                RecommendedAction = "Click 'Get Treatment Plan' to receive a personalized treatment plan.",
                 DiagnosedAt = DateTime.UtcNow,
                 CropName = dto.PlantName,
                 Country = user.Country,
@@ -151,16 +155,39 @@ namespace AgriGuard.API.Controllers
             return Ok(result);
         }
 
-        private string GetRecommendedAction(string diseaseName)
+        [HttpPost("treatment")]
+        public async Task<IActionResult> GetTreatment([FromBody] GetTreatmentRequestDto dto)
         {
-            return diseaseName switch
+            try
             {
-                "Tomato___Early_blight" => "Remove affected leaves and use a suitable fungicide.",
-                "Tomato___Late_blight" => "Avoid overhead irrigation and apply anti-blight treatment.",
-                "Tomato___healthy" => "The plant looks healthy. Continue regular care.",
-                "Potato___Early_blight" => "Remove infected leaves and apply a suitable fungicide. Monitor irrigation carefully.",
-                _ => "Consult an agricultural specialist for the best treatment."
-            };
+                if (string.IsNullOrWhiteSpace(dto.DiseaseName))
+                {
+                    return BadRequest(new { message = "Disease name is required" });
+                }
+
+                if (string.IsNullOrWhiteSpace(dto.Country) || string.IsNullOrWhiteSpace(dto.Governorate))
+                {
+                    return BadRequest(new { message = "Country and governorate are required" });
+                }
+
+                var result = await _treatmentService.GetTreatmentPlanAsync(dto);
+
+                if (result == null)
+                {
+                    return BadRequest(new { message = "Failed to generate treatment plan" });
+                }
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    message = ex.Message,
+                    details = ex.InnerException?.Message
+                });
+            }
         }
+
     }
 }

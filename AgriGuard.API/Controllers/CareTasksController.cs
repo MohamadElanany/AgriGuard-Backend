@@ -41,23 +41,68 @@ namespace AgriGuard.API.Controllers
             return Ok(tasks);
         }
 
+        [Authorize]
         [HttpPut("{id}/complete")]
         public async Task<IActionResult> CompleteTask(int id)
         {
-            var task = await _context.CareTasks.FindAsync(id);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var task = await _context.CareTasks
+                .Include(t => t.UserPlant)
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (task == null)
             {
                 return NotFound(new { message = "Task not found" });
             }
 
+            if (task.UserPlant == null || task.UserPlant.UserId != userId)
+            {
+                return Forbid();
+            }
+
+            if (task.IsCompleted)
+            {
+                return BadRequest(new { message = "Task is already completed" });
+            }
+
             task.IsCompleted = true;
+
+            var userPlant = task.UserPlant;
+
+            var totalTasks = await _context.CareTasks
+                .CountAsync(t => t.UserPlantId == userPlant.Id);
+
+            var completedTasks = await _context.CareTasks
+                .CountAsync(t => t.UserPlantId == userPlant.Id && t.IsCompleted);
+
+            if (totalTasks > 0)
+            {
+                userPlant.ProgressPercentage = (int)Math.Round((completedTasks * 100.0) / totalTasks);
+            }
+            else
+            {
+                userPlant.ProgressPercentage = 0;
+            }
+
+            userPlant.Status = completedTasks == totalTasks && totalTasks > 0
+                ? "Completed"
+                : "InProgress";
 
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                message = "Task marked as completed"
+                message = "Task marked as completed",
+                progressPercentage = userPlant.ProgressPercentage,
+                plantStatus = userPlant.Status
             });
         }
 
@@ -95,7 +140,6 @@ namespace AgriGuard.API.Controllers
 
             return Ok(tasks);
         }
-
 
         [Authorize]
         [HttpGet("today")]
@@ -138,6 +182,7 @@ namespace AgriGuard.API.Controllers
 
             return Ok(tasks);
         }
+
 
     }
 }

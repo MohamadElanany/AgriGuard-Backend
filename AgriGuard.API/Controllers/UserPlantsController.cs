@@ -121,25 +121,53 @@ namespace AgriGuard.API.Controllers
                 .Include(up => up.User)
                 .Include(up => up.Crop)
                 .Where(up => up.UserId == userId)
-                .Select(up => new
-                {
-                    up.Id,
-                    up.UserId,
-                    UserName = up.User.FullName,
-                    up.CropId,
-                    CropName = up.Crop.Name,
-                    CropImageUrl = up.Crop.ImageUrl,
-                    up.CustomTitle,
-                    up.PlantingDate,
-                    up.Status,
-                    up.ProgressPercentage,
-                    up.Crop.SunHours,
-                    up.Crop.WaterLevel,
-                    up.Crop.GrowthDurationDays
-                })
                 .ToListAsync();
 
-            return Ok(userPlants);
+            var result = new List<object>();
+
+            foreach (var plant in userPlants)
+            {
+                var totalTasks = await _context.CareTasks
+                    .CountAsync(t => t.UserPlantId == plant.Id);
+
+                var completedTasks = await _context.CareTasks
+                    .CountAsync(t => t.UserPlantId == plant.Id && t.IsCompleted);
+
+                int calculatedProgress = totalTasks > 0
+                    ? (int)Math.Round((completedTasks * 100.0) / totalTasks)
+                    : 0;
+
+                string calculatedStatus = totalTasks > 0 && completedTasks == totalTasks
+                    ? "Completed"
+                    : "InProgress";
+
+                if (plant.ProgressPercentage != calculatedProgress || plant.Status != calculatedStatus)
+                {
+                    plant.ProgressPercentage = calculatedProgress;
+                    plant.Status = calculatedStatus;
+                }
+
+                result.Add(new
+                {
+                    plant.Id,
+                    plant.UserId,
+                    UserName = plant.User.FullName,
+                    plant.CropId,
+                    CropName = plant.Crop.Name,
+                    CropImageUrl = plant.Crop.ImageUrl,
+                    plant.CustomTitle,
+                    plant.PlantingDate,
+                    Status = calculatedStatus,
+                    ProgressPercentage = calculatedProgress,
+                    plant.Crop.SunHours,
+                    plant.Crop.WaterLevel,
+                    plant.Crop.GrowthDurationDays
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(result);
         }
 
         [Authorize]
@@ -178,6 +206,24 @@ namespace AgriGuard.API.Controllers
                 })
                 .ToListAsync();
 
+            int totalTasks = tasks.Count;
+            int completedTasks = tasks.Count(t => t.IsCompleted);
+
+            int calculatedProgress = totalTasks > 0
+                ? (int)Math.Round((completedTasks * 100.0) / totalTasks)
+                : 0;
+
+            string calculatedStatus = totalTasks > 0 && completedTasks == totalTasks
+                ? "Completed"
+                : "InProgress";
+
+            if (userPlant.ProgressPercentage != calculatedProgress || userPlant.Status != calculatedStatus)
+            {
+                userPlant.ProgressPercentage = calculatedProgress;
+                userPlant.Status = calculatedStatus;
+                await _context.SaveChangesAsync();
+            }
+
             return Ok(new
             {
                 userPlant.Id,
@@ -186,14 +232,13 @@ namespace AgriGuard.API.Controllers
                 CropImageUrl = userPlant.Crop.ImageUrl,
                 userPlant.CustomTitle,
                 userPlant.PlantingDate,
-                userPlant.Status,
-                userPlant.ProgressPercentage,
+                Status = calculatedStatus,
+                ProgressPercentage = calculatedProgress,
                 userPlant.Crop.SunHours,
                 userPlant.Crop.WaterLevel,
                 userPlant.Crop.GrowthDurationDays,
                 Tasks = tasks
             });
         }
-
     }
 }
