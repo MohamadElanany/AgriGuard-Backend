@@ -1,5 +1,6 @@
 ﻿using AgriGuard.API.Data;
 using AgriGuard.API.DTOs;
+using AgriGuard.API.Helpers;
 using AgriGuard.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -108,6 +109,11 @@ namespace AgriGuard.API.Controllers
 
             if (dto.Image != null && dto.Image.Length > 0)
             {
+                if (!FileHelper.IsValidImage(dto.Image, out var error))
+                {
+                    return BadRequest(new { message = error });
+                }
+
                 var uploadsFolder = Path.Combine(_environment.WebRootPath, "images", "posts");
 
                 if (!Directory.Exists(uploadsFolder))
@@ -115,7 +121,8 @@ namespace AgriGuard.API.Controllers
                     Directory.CreateDirectory(uploadsFolder);
                 }
 
-                var uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
+                // ✨ استخدام الفئة المساعدة لتوليد اسم آمن
+                var uniqueFileName = FileHelper.GenerateSafeFileName(dto.Image.FileName);
                 var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
                 using (var fileStream = new FileStream(filePath, FileMode.Create))

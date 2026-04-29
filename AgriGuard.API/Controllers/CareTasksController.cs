@@ -134,7 +134,12 @@ namespace AgriGuard.API.Controllers
                     t.Title,
                     t.Description,
                     t.DueDate,
-                    t.IsCompleted
+                    t.IsCompleted,
+                    Status = t.IsCompleted
+                    ? "Completed"
+                    : t.DueDate.Date < DateTime.Today
+                        ? "Overdue"
+                        : "Pending"
                 })
                 .ToListAsync();
 
@@ -176,13 +181,61 @@ namespace AgriGuard.API.Controllers
                     t.Title,
                     t.Description,
                     t.DueDate,
-                    t.IsCompleted
+                    t.IsCompleted,
+                    Status = t.IsCompleted
+                    ? "Completed"
+                    : t.DueDate.Date < DateTime.Today
+                        ? "Overdue"
+                        : "Pending"
                 })
                 .ToListAsync();
 
             return Ok(tasks);
         }
 
+
+
+        [Authorize]
+        [HttpGet("overdue")]
+        public async Task<IActionResult> GetOverdueTasks()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var today = DateTime.Today;
+
+            var tasks = await _context.CareTasks
+                .Include(t => t.UserPlant)
+                    .ThenInclude(up => up.User)
+                .Include(t => t.UserPlant)
+                    .ThenInclude(up => up.Crop)
+                .Where(t => t.UserPlant.UserId == userId
+                            && !t.IsCompleted
+                            && t.DueDate.Date < today)
+                .Select(t => new
+                {
+                    t.Id,
+                    t.UserPlantId,
+                    UserName = t.UserPlant.User.FullName,
+                    CropName = t.UserPlant.Crop.Name,
+                    CropImageUrl = t.UserPlant.Crop.ImageUrl,
+                    CustomTitle = t.UserPlant.CustomTitle,
+                    t.Title,
+                    t.Description,
+                    t.DueDate,
+                    t.IsCompleted,
+                    Status = "Overdue"
+                })
+                .ToListAsync();
+
+            return Ok(tasks);
+        }
 
     }
 }

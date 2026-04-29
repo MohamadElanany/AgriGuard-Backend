@@ -1,5 +1,6 @@
 ﻿using AgriGuard.API.Data;
 using AgriGuard.API.DTOs;
+using AgriGuard.API.Helpers;
 using AgriGuard.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -203,9 +204,18 @@ namespace AgriGuard.API.Controllers
         public async Task<IActionResult> UploadProfileImage(IFormFile image)
         {
             if (image == null || image.Length == 0)
-                return BadRequest("No image uploaded");
+                return BadRequest(new { message = "No image uploaded" });
 
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+            if (!FileHelper.IsValidImage(image, out var error))
+            {
+                return BadRequest(new { message = error });
+            }
+
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim))
+                return Unauthorized(new { message = "User ID not found in token" });
+
+            var userId = int.Parse(userIdClaim);
 
             var uploadsFolder = Path.Combine("wwwroot", "images", "profiles");
             if (!Directory.Exists(uploadsFolder))
@@ -213,7 +223,7 @@ namespace AgriGuard.API.Controllers
                 Directory.CreateDirectory(uploadsFolder);
             }
 
-            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(image.FileName)}";
+            var fileName = FileHelper.GenerateSafeFileName(image.FileName);
             var filePath = Path.Combine(uploadsFolder, fileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
@@ -222,6 +232,9 @@ namespace AgriGuard.API.Controllers
             }
 
             var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound(new { message = "User not found" });
+
             user.ProfileImageUrl = $"/images/profiles/{fileName}";
 
             await _context.SaveChangesAsync();

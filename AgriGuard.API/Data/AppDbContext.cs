@@ -8,6 +8,7 @@ namespace AgriGuard.API.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
+
         public DbSet<User> Users { get; set; }
         public DbSet<Crop> Crops { get; set; }
         public DbSet<UserPlant> UserPlants { get; set; }
@@ -17,6 +18,8 @@ namespace AgriGuard.API.Data
         public DbSet<Post> Posts { get; set; }
         public DbSet<Comment> Comments { get; set; }
         public DbSet<Like> Likes { get; set; }
+        public DbSet<Country> Countries { get; set; }
+        public DbSet<Governorate> Governorates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -45,6 +48,20 @@ namespace AgriGuard.API.Data
                 .WithMany(p => p.Likes)
                 .HasForeignKey(l => l.PostId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Country>()
+                .HasMany(c => c.Governorates)
+                .WithOne(g => g.Country)
+                .HasForeignKey(g => g.CountryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Country>()
+                .HasIndex(c => c.Name)
+                .IsUnique();
+
+            modelBuilder.Entity<Governorate>()
+                .HasIndex(g => new { g.Name, g.CountryId })
+                .IsUnique();
         }
     }
 }

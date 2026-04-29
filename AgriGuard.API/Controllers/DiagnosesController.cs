@@ -5,6 +5,8 @@ using AgriGuard.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using AgriGuard.API.Helpers;
+using System.Security.Claims;
 
 namespace AgriGuard.API.Controllers
 {
@@ -61,9 +63,10 @@ namespace AgriGuard.API.Controllers
         [HttpPost("predict")]
         public async Task<IActionResult> Predict([FromForm] CreateDiagnosisDto dto)
         {
-            if (dto.Image == null || dto.Image.Length == 0)
+
+            if (!FileHelper.IsValidImage(dto.Image, out var error))
             {
-                return BadRequest(new { message = "Image is required" });
+                return BadRequest(new { message = error });
             }
 
             if (string.IsNullOrWhiteSpace(dto.PlantName))
@@ -115,7 +118,7 @@ namespace AgriGuard.API.Controllers
                 Directory.CreateDirectory(uploadsFolder);
             }
 
-            var uniqueFileName = $"{Guid.NewGuid()}_{dto.Image.FileName}";
+            var uniqueFileName = FileHelper.GenerateSafeFileName(dto.Image.FileName);
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
             using (var fileStream = new FileStream(filePath, FileMode.Create))
@@ -127,11 +130,12 @@ namespace AgriGuard.API.Controllers
 
             var diagnosis = new Diagnosis
             {
+                UserId = userId,
                 UserPlantId = dto.UserPlantId,
                 ImageUrl = imageUrl,
                 DiseaseName = prediction.Disease,
                 Confidence = prediction.Confidence,
-                RecommendedAction = "Click 'Get Treatment Plan' to receive a personalized treatment plan.",
+                RecommendedAction = "unavailable",
                 DiagnosedAt = DateTime.UtcNow,
                 CropName = dto.PlantName,
                 Country = user.Country,
@@ -160,6 +164,11 @@ namespace AgriGuard.API.Controllers
         {
             try
             {
+                if (dto.DiagnosisId <= 0)
+                {
+                    return BadRequest(new { message = "Diagnosis ID is required" });
+                }
+
                 if (string.IsNullOrWhiteSpace(dto.DiseaseName))
                 {
                     return BadRequest(new { message = "Disease name is required" });
@@ -170,12 +179,85 @@ namespace AgriGuard.API.Controllers
                     return BadRequest(new { message = "Country and governorate are required" });
                 }
 
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Unauthorized(new { message = "User ID not found in token" });
+                }
+
+                int userId = int.Parse(userIdClaim);
+
+                var currentDiagnosis = await _context.Diagnoses
+                    .FirstOrDefaultAsync(d => d.Id == dto.DiagnosisId && d.UserId == userId);
+
+                if (currentDiagnosis == null)
+                {
+                    return NotFound(new { message = "Diagnosis not found" });
+                }
+
+                if (!string.IsNullOrWhiteSpace(currentDiagnosis.TreatmentPlan))
+                {
+                    return Ok(new
+                    {
+                        treatmentPlan = currentDiagnosis.TreatmentPlan,
+                        preventionTips = string.IsNullOrWhiteSpace(currentDiagnosis.PreventionTipsJson)
+                            ? new List<string>()
+                            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentDiagnosis.PreventionTipsJson),
+                        recommendedProducts = string.IsNullOrWhiteSpace(currentDiagnosis.RecommendedProductsJson)
+                            ? new List<string>()
+                            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentDiagnosis.RecommendedProductsJson),
+                        notes = currentDiagnosis.TreatmentNotes ?? ""
+                    });
+                }
+
+                var cachedDiagnosis = await _context.Diagnoses
+                    .Where(d =>
+                        d.Id != currentDiagnosis.Id &&
+                        d.DiseaseName == dto.DiseaseName &&
+                        d.CropName == dto.CropName &&
+                        d.Country == dto.Country &&
+                        d.Governorate == dto.Governorate &&
+                        d.TreatmentPlan != null)
+                    .OrderByDescending(d => d.TreatmentGeneratedAt)
+                    .FirstOrDefaultAsync();
+
+                if (cachedDiagnosis != null)
+                {
+                    currentDiagnosis.TreatmentPlan = cachedDiagnosis.TreatmentPlan;
+                    currentDiagnosis.PreventionTipsJson = cachedDiagnosis.PreventionTipsJson;
+                    currentDiagnosis.RecommendedProductsJson = cachedDiagnosis.RecommendedProductsJson;
+                    currentDiagnosis.TreatmentNotes = cachedDiagnosis.TreatmentNotes;
+                    currentDiagnosis.TreatmentGeneratedAt = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+
+                    return Ok(new
+                    {
+                        treatmentPlan = currentDiagnosis.TreatmentPlan,
+                        preventionTips = string.IsNullOrWhiteSpace(currentDiagnosis.PreventionTipsJson)
+                            ? new List<string>()
+                            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentDiagnosis.PreventionTipsJson),
+                        recommendedProducts = string.IsNullOrWhiteSpace(currentDiagnosis.RecommendedProductsJson)
+                            ? new List<string>()
+                            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(currentDiagnosis.RecommendedProductsJson),
+                        notes = currentDiagnosis.TreatmentNotes ?? ""
+                    });
+                }
+
                 var result = await _treatmentService.GetTreatmentPlanAsync(dto);
 
                 if (result == null)
                 {
                     return BadRequest(new { message = "Failed to generate treatment plan" });
                 }
+
+                currentDiagnosis.TreatmentPlan = result.TreatmentPlan;
+                currentDiagnosis.PreventionTipsJson = System.Text.Json.JsonSerializer.Serialize(result.PreventionTips);
+                currentDiagnosis.RecommendedProductsJson = System.Text.Json.JsonSerializer.Serialize(result.RecommendedProducts);
+                currentDiagnosis.TreatmentNotes = result.Notes;
+                currentDiagnosis.TreatmentGeneratedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
 
                 return Ok(result);
             }
@@ -187,6 +269,132 @@ namespace AgriGuard.API.Controllers
                     details = ex.InnerException?.Message
                 });
             }
+        }
+
+        [HttpGet("my")]
+        public async Task<IActionResult> GetMyDiagnoses()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var diagnosesFromDb = await _context.Diagnoses
+                .Where(d => d.UserId == userId)
+                .OrderByDescending(d => d.DiagnosedAt)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.UserPlantId,
+                    d.CropName,
+                    d.ImageUrl,
+                    d.DiseaseName,
+                    d.Confidence,
+                    d.RecommendedAction,
+                    d.TreatmentPlan,
+                    d.PreventionTipsJson,
+                    d.RecommendedProductsJson,
+                    d.TreatmentNotes,
+                    d.Country,
+                    d.Governorate,
+                    d.DiagnosedAt
+                })
+                .ToListAsync();
+
+            var diagnoses = diagnosesFromDb.Select(d => new
+            {
+                d.Id,
+                d.UserPlantId,
+                d.CropName,
+                d.ImageUrl,
+                d.DiseaseName,
+                d.Confidence,
+                d.RecommendedAction,
+                d.TreatmentPlan,
+                PreventionTips = string.IsNullOrWhiteSpace(d.PreventionTipsJson)
+                    ? new List<string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<string>>(d.PreventionTipsJson) ?? new List<string>(),
+                RecommendedProducts = string.IsNullOrWhiteSpace(d.RecommendedProductsJson)
+                    ? new List<string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<string>>(d.RecommendedProductsJson) ?? new List<string>(),
+                d.TreatmentNotes,
+                d.Country,
+                d.Governorate,
+                d.DiagnosedAt
+            }).ToList();
+
+            return Ok(diagnoses);
+        }
+
+        [HttpGet("plant/{userPlantId}")]
+        public async Task<IActionResult> GetDiagnosesByPlant(int userPlantId)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized(new { message = "User ID not found in token" });
+            }
+
+            int userId = int.Parse(userIdClaim);
+
+            var plantExists = await _context.UserPlants
+                .AnyAsync(up => up.Id == userPlantId && up.UserId == userId);
+
+            if (!plantExists)
+            {
+                return NotFound(new { message = "Plant session not found" });
+            }
+
+            var diagnosesFromDb = await _context.Diagnoses
+                .Where(d => d.UserPlantId == userPlantId && d.UserId == userId)
+                .OrderByDescending(d => d.DiagnosedAt)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.UserPlantId,
+                    d.CropName,
+                    d.ImageUrl,
+                    d.DiseaseName,
+                    d.Confidence,
+                    d.RecommendedAction,
+                    d.TreatmentPlan,
+                    d.PreventionTipsJson,
+                    d.RecommendedProductsJson,
+                    d.TreatmentNotes,
+                    d.Country,
+                    d.Governorate,
+                    d.DiagnosedAt
+                })
+                .ToListAsync();
+
+            var diagnoses = diagnosesFromDb.Select(d => new
+            {
+                d.Id,
+                d.UserPlantId,
+                d.CropName,
+                d.ImageUrl,
+                d.DiseaseName,
+                d.Confidence,
+                d.RecommendedAction,
+                d.TreatmentPlan,
+                PreventionTips = string.IsNullOrWhiteSpace(d.PreventionTipsJson)
+                    ? new List<string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<string>>(d.PreventionTipsJson) ?? new List<string>(),
+                RecommendedProducts = string.IsNullOrWhiteSpace(d.RecommendedProductsJson)
+                    ? new List<string>()
+                    : System.Text.Json.JsonSerializer.Deserialize<List<string>>(d.RecommendedProductsJson) ?? new List<string>(),
+                d.TreatmentNotes,
+                d.Country,
+                d.Governorate,
+                d.DiagnosedAt
+            }).ToList();
+
+            return Ok(diagnoses);
         }
 
     }

@@ -2,6 +2,8 @@
 {
     public class GetTreatmentRequestDto
     {
+
+        public int DiagnosisId { get; set; }
         public string DiseaseName { get; set; } = string.Empty;
         public string CropName { get; set; } = string.Empty;
         public string Country { get; set; } = string.Empty;

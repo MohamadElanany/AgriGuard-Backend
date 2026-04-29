@@ -4,6 +4,7 @@ using AgriGuard.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AgriGuard.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260412180053_AddTreatmentFieldsToDiagnosis")]
+    partial class AddTreatmentFieldsToDiagnosis
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -117,26 +120,6 @@ namespace AgriGuard.API.Migrations
                     b.ToTable("Comments");
                 });
 
-            modelBuilder.Entity("AgriGuard.API.Models.Country", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Countries");
-                });
-
             modelBuilder.Entity("AgriGuard.API.Models.Crop", b =>
                 {
                     b.Property<int>("Id")
@@ -238,31 +221,6 @@ namespace AgriGuard.API.Migrations
                     b.HasIndex("UserPlantId");
 
                     b.ToTable("Diagnoses");
-                });
-
-            modelBuilder.Entity("AgriGuard.API.Models.Governorate", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CountryId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CountryId");
-
-                    b.HasIndex("Name", "CountryId")
-                        .IsUnique();
-
-                    b.ToTable("Governorates");
                 });
 
             modelBuilder.Entity("AgriGuard.API.Models.Like", b =>
@@ -466,17 +424,6 @@ namespace AgriGuard.API.Migrations
                     b.Navigation("UserPlant");
                 });
 
-            modelBuilder.Entity("AgriGuard.API.Models.Governorate", b =>
-                {
-                    b.HasOne("AgriGuard.API.Models.Country", "Country")
-                        .WithMany("Governorates")
-                        .HasForeignKey("CountryId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Country");
-                });
-
             modelBuilder.Entity("AgriGuard.API.Models.Like", b =>
                 {
                     b.HasOne("AgriGuard.API.Models.Post", "Post")
@@ -524,11 +471,6 @@ namespace AgriGuard.API.Migrations
                     b.Navigation("Crop");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("AgriGuard.API.Models.Country", b =>
-                {
-                    b.Navigation("Governorates");
                 });
 
             modelBuilder.Entity("AgriGuard.API.Models.Post", b =>
