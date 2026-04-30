@@ -23,5 +23,11 @@
         public string? ProfileImageUrl { get; set; }
 
         public string? Bio { get; set; }
+
+        public string? PasswordResetCode { get; set; }
+
+        public DateTime? PasswordResetCodeExpiresAt { get; set; }
+
+        public bool IsPasswordResetCodeUsed { get; set; } = false;
     }
 }

@@ -36,6 +36,8 @@ namespace AgriGuard.API
 
             builder.Services.AddHttpClient<TreatmentService>();
 
+            builder.Services.AddScoped<EmailService>();
+
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
                 {

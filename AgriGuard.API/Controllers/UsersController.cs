@@ -2,14 +2,15 @@
 using AgriGuard.API.DTOs;
 using AgriGuard.API.Helpers;
 using AgriGuard.API.Models;
+using AgriGuard.API.Services;
+using BCrypt.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using BCrypt.Net;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authorization;
 
 namespace AgriGuard.API.Controllers
 {
@@ -19,11 +20,13 @@ namespace AgriGuard.API.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly EmailService _emailService;
 
-        public UsersController(AppDbContext context, IConfiguration configuration)
+        public UsersController(AppDbContext context, IConfiguration configuration, EmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
         }
 
         private string GenerateJwtToken(User user)
@@ -321,5 +324,171 @@ namespace AgriGuard.API.Controllers
                 message = "User unblocked successfully"
             });
         }
+
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordDto dto)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == dto.Email);
+
+            if (user == null)
+            {
+                return Ok(new
+                {
+                    message = "If this email exists, a reset code has been sent"
+                });
+            }
+
+            var code = Random.Shared.Next(100000, 999999).ToString();
+
+            user.PasswordResetCode = code;
+            user.PasswordResetCodeExpiresAt = DateTime.UtcNow.AddMinutes(10);
+            user.IsPasswordResetCodeUsed = false;
+
+            await _context.SaveChangesAsync();
+
+            var subject = "AgriGuard Password Reset Code";
+
+            var body = $@"
+                <h2>AgriGuard Password Reset</h2>
+                <p>Your password reset code is:</p>
+                <h1 style='letter-spacing: 4px;'>{code}</h1>
+                <p>This code will expire in 10 minutes.</p>
+            ";
+
+            await _emailService.SendEmailAsync(user.Email, subject, body);
+
+            return Ok(new
+            {
+                message = "If this email exists, a reset code has been sent"
+            });
+        }
+
+        [HttpPost("verify-reset-code")]
+        public async Task<IActionResult> VerifyResetCode(VerifyResetCodeDto dto)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == dto.Email);
+
+            if (user == null)
+                return BadRequest(new { message = "Invalid email or code" });
+
+            if (user.PasswordResetCode != dto.Code)
+                return BadRequest(new { message = "Invalid email or code" });
+
+            if (user.IsPasswordResetCodeUsed)
+                return BadRequest(new { message = "Code already used" });
+
+            if (user.PasswordResetCodeExpiresAt == null ||
+                user.PasswordResetCodeExpiresAt < DateTime.UtcNow)
+            {
+                return BadRequest(new { message = "Code expired" });
+            }
+
+            return Ok(new { message = "Code verified successfully" });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordDto dto)
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email == dto.Email);
+
+            if (user == null)
+                return BadRequest(new { message = "Invalid email or code" });
+
+            if (user.PasswordResetCode != dto.Code)
+                return BadRequest(new { message = "Invalid email or code" });
+
+            if (user.IsPasswordResetCodeUsed)
+                return BadRequest(new { message = "Code already used" });
+
+            if (user.PasswordResetCodeExpiresAt == null ||
+                user.PasswordResetCodeExpiresAt < DateTime.UtcNow)
+            {
+                return BadRequest(new { message = "Code expired" });
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            user.PasswordResetCode = null;
+            user.PasswordResetCodeExpiresAt = null;
+            user.IsPasswordResetCodeUsed = true;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password reset successfully" });
+        }
+
+        [Authorize]
+        [HttpPut("settings")]
+        public async Task<IActionResult> UpdateAccountSettings([FromBody] UpdateAccountSettingsDto dto)
+        {
+            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            var user = await _context.Users.FindAsync(userId);
+
+            if (user == null)
+                return NotFound(new { message = "User not found" });
+
+            var emailExists = await _context.Users
+                .AnyAsync(u => u.Email == dto.Email && u.Id != userId);
+
+            if (emailExists)
+                return BadRequest(new { message = "Email already exists" });
+
+            if (!string.IsNullOrWhiteSpace(dto.NewPassword))
+            {
+                if (string.IsNullOrWhiteSpace(dto.CurrentPassword))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Current password is required to change password"
+                    });
+                }
+
+                var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(
+                    dto.CurrentPassword,
+                    user.PasswordHash
+                );
+
+                if (!isCurrentPasswordValid)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Current password is incorrect"
+                    });
+                }
+
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+            }
+
+            user.FullName = dto.FullName;
+            user.Email = dto.Email;
+            user.Country = dto.Country;
+            user.Governorate = dto.Governorate;
+            user.Bio = dto.Bio;
+
+            await _context.SaveChangesAsync();
+
+            var newToken = GenerateJwtToken(user);
+
+            return Ok(new
+            {
+                message = "Account settings updated successfully",
+                token = newToken,
+                user = new
+                {
+                    user.Id,
+                    user.FullName,
+                    user.Email,
+                    user.Country,
+                    user.Governorate,
+                    user.ProfileImageUrl,
+                    user.Bio,
+                    user.Role
+                }
+            });
+        }
+
     }
 }
