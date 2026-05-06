@@ -106,9 +106,37 @@ namespace AgriGuard.API.Controllers
 
             var prediction = await _aiDiagnosisService.PredictDiseaseAsync(dto.PlantName, dto.Image);
 
-            if (prediction == null || !prediction.Success || string.IsNullOrWhiteSpace(prediction.Disease))
+            if (prediction == null || !prediction.Success)
             {
                 return BadRequest(new { message = "AI prediction failed" });
+            }
+
+            //  Uncertain case
+            if (prediction.Status == "Uncertain")
+            {
+                return BadRequest(new
+                {
+                    status = "Uncertain",
+                    message = prediction.Message,
+                    confidence = prediction.Confidence
+                });
+            }
+
+            //  Mismatch case
+            if (prediction.Status == "Mismatch")
+            {
+                return BadRequest(new
+                {
+                    status = "Mismatch",
+                    message = prediction.Message,
+                    confidence = prediction.Confidence
+                });
+            }
+
+            //  Only allow valid final cases
+            if (prediction.Status != "Diseased" && prediction.Status != "Healthy")
+            {
+                return BadRequest(new { message = "Unknown AI status" });
             }
 
             var uploadsFolder = Path.Combine(_environment.WebRootPath, "images", "diagnoses");
@@ -135,7 +163,9 @@ namespace AgriGuard.API.Controllers
                 ImageUrl = imageUrl,
                 DiseaseName = prediction.Disease,
                 Confidence = prediction.Confidence,
-                RecommendedAction = "unavailable",
+                RecommendedAction = prediction.Status == "Healthy"
+                    ? "The plant appears healthy. Keep monitoring it and continue regular care."
+                    : "unavailable",
                 DiagnosedAt = DateTime.UtcNow,
                 CropName = dto.PlantName,
                 Country = user.Country,
