@@ -26,9 +26,11 @@ namespace AgriGuard.API
 
             builder.Services.AddControllers();
 
+            // Configure SQL Server database connection
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+            // Register HTTP client for communication with the AI microservice
             builder.Services.AddHttpClient<AiDiagnosisService>(client =>
             {
                 client.BaseAddress = new Uri("http://127.0.0.1:8000/");
@@ -38,6 +40,7 @@ namespace AgriGuard.API
 
             builder.Services.AddScoped<EmailService>();
 
+            // Configure JWT authentication and authorization
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
                 {

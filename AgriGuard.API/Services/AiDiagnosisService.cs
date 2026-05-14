@@ -15,6 +15,7 @@ namespace AgriGuard.API.Services
 
         public async Task<AiPredictionResponse?> PredictDiseaseAsync(string plantName, IFormFile image)
         {
+            // Prepare multipart request containing the plant name and uploaded leaf image
             using var content = new MultipartFormDataContent();
 
             content.Add(new StringContent(plantName), "plant_name");
@@ -26,6 +27,7 @@ namespace AgriGuard.API.Services
 
             content.Add(streamContent, "file", image.FileName);
 
+            // Send the request to the FastAPI AI microservice for prediction
             var response = await _httpClient.PostAsync("predict/", content);
 
             if (!response.IsSuccessStatusCode)

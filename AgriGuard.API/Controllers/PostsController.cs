@@ -121,7 +121,7 @@ namespace AgriGuard.API.Controllers
                     Directory.CreateDirectory(uploadsFolder);
                 }
 
-                // ✨ استخدام الفئة المساعدة لتوليد اسم آمن
+                
                 var uniqueFileName = FileHelper.GenerateSafeFileName(dto.Image.FileName);
                 var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
@@ -138,7 +138,7 @@ namespace AgriGuard.API.Controllers
                 UserId = userId,
                 Content = dto.Content ?? string.Empty,
                 ImageUrl = imageUrl,
-                Status = "Pending",
+                Status = User.IsInRole("Admin") ? "Approved" : "Pending",
                 CreatedAt = DateTime.UtcNow
             };
 
