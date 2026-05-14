@@ -14,6 +14,7 @@ namespace AgriGuard.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // Configure CORS policy for frontend communication
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowFrontend", policy =>
@@ -24,6 +25,7 @@ namespace AgriGuard.API
                 });
             });
 
+            // Register API controllers
             builder.Services.AddControllers();
 
             // Configure SQL Server database connection
@@ -36,8 +38,10 @@ namespace AgriGuard.API
                 client.BaseAddress = new Uri("http://127.0.0.1:8000/");
             });
 
+            // Register HTTP client for Gemini AI treatment service
             builder.Services.AddHttpClient<TreatmentService>();
 
+            // Register email service for password reset functionality
             builder.Services.AddScoped<EmailService>();
 
             // Configure JWT authentication and authorization
@@ -59,6 +63,7 @@ namespace AgriGuard.API
 
             builder.Services.AddEndpointsApiExplorer();
 
+            // Configure Swagger with JWT authentication support
             builder.Services.AddSwaggerGen(options =>
             {
                 options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
@@ -89,12 +94,14 @@ namespace AgriGuard.API
 
             var app = builder.Build();
 
+            // Enable Swagger only in development environment
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
+            // Configure application middleware pipeline
             app.UseHttpsRedirection();
             app.UseStaticFiles();
             app.UseCors("AllowFrontend");
@@ -102,12 +109,14 @@ namespace AgriGuard.API
             app.UseAuthorization();
             app.MapControllers();
 
+            // Seed default locations data on first startup
             using (var scope = app.Services.CreateScope())
             {
                 var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
                 context.Database.Migrate();
 
+                // Add default Egypt governorates if database is empty
                 if (!context.Countries.Any())
                 {
                     var egypt = new Country

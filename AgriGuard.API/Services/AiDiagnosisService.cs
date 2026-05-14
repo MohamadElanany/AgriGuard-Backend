@@ -4,6 +4,7 @@ using AgriGuard.API.Models;
 
 namespace AgriGuard.API.Services
 {
+    // Service responsible for communicating with the AI microservice
     public class AiDiagnosisService
     {
         private readonly HttpClient _httpClient;
@@ -13,6 +14,7 @@ namespace AgriGuard.API.Services
             _httpClient = httpClient;
         }
 
+        // Send plant image to AI model and return prediction result
         public async Task<AiPredictionResponse?> PredictDiseaseAsync(string plantName, IFormFile image)
         {
             // Prepare multipart request containing the plant name and uploaded leaf image
@@ -36,7 +38,7 @@ namespace AgriGuard.API.Services
             }
 
             var jsonResponse = await response.Content.ReadAsStringAsync();
-            Console.WriteLine(jsonResponse);
+            //Console.WriteLine(jsonResponse);
 
             var result = JsonSerializer.Deserialize<AiPredictionResponse>(
                 jsonResponse,

@@ -19,6 +19,7 @@ namespace AgriGuard.API.Controllers
             _context = context;
         }
 
+        // Get all plant sessions
         [HttpGet]
         public async Task<IActionResult> GetAllUserPlants()
         {
@@ -40,10 +41,12 @@ namespace AgriGuard.API.Controllers
             return Ok(userPlants);
         }
 
+        // Create new plant session for current user
         [Authorize]
         [HttpPost]
         public async Task<IActionResult> CreateUserPlant(CreateUserPlantDto dto)
         {
+            // Get current authenticated user ID
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
             if (string.IsNullOrEmpty(userIdClaim))
@@ -53,18 +56,21 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Ensure user exists
             var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
             }
 
+            // Ensure selected crop exists
             var cropExists = await _context.Crops.AnyAsync(c => c.Id == dto.CropId);
             if (!cropExists)
             {
                 return BadRequest(new { message = "Crop not found" });
             }
 
+            // Create new plant session
             var userPlant = new UserPlant
             {
                 UserId = userId,
@@ -78,10 +84,12 @@ namespace AgriGuard.API.Controllers
             await _context.UserPlants.AddAsync(userPlant);
             await _context.SaveChangesAsync();
 
+            // Load task templates for selected crop
             var templates = await _context.CareTaskTemplates
                 .Where(t => t.CropId == dto.CropId)
                 .ToListAsync();
 
+            // Generate care tasks based on planting date
             var careTasks = templates.Select(t => new CareTask
             {
                 UserPlantId = userPlant.Id,
@@ -91,6 +99,7 @@ namespace AgriGuard.API.Controllers
                 IsCompleted = false
             }).ToList();
 
+            // Save generated care tasks
             if (careTasks.Any())
             {
                 await _context.CareTasks.AddRangeAsync(careTasks);
@@ -104,6 +113,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Get current user's plant sessions
         [Authorize]
         [HttpGet("my")]
         public async Task<IActionResult> GetMyPlants()
@@ -117,6 +127,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Load user plants with related crop data
             var userPlants = await _context.UserPlants
                 .Include(up => up.User)
                 .Include(up => up.Crop)
@@ -125,8 +136,10 @@ namespace AgriGuard.API.Controllers
 
             var result = new List<object>();
 
+            // Calculate progress for each plant session
             foreach (var plant in userPlants)
             {
+                // Count total and completed tasks
                 var totalTasks = await _context.CareTasks
                     .CountAsync(t => t.UserPlantId == plant.Id);
 
@@ -137,6 +150,7 @@ namespace AgriGuard.API.Controllers
                     ? (int)Math.Round((completedTasks * 100.0) / totalTasks)
                     : 0;
 
+                // Update plant status automatically
                 string calculatedStatus = totalTasks > 0 && completedTasks == totalTasks
                     ? "Completed"
                     : "InProgress";
@@ -147,6 +161,7 @@ namespace AgriGuard.API.Controllers
                     plant.Status = calculatedStatus;
                 }
 
+                // Prepare response data for frontend
                 result.Add(new
                 {
                     plant.Id,
@@ -165,11 +180,13 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
+            // Save updated progress and status
             await _context.SaveChangesAsync();
 
             return Ok(result);
         }
 
+        // Get detailed plant session data
         [Authorize]
         [HttpGet("{id}")]
         public async Task<IActionResult> GetUserPlantById(int id)
@@ -183,6 +200,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Ensure plant session belongs to current user
             var userPlant = await _context.UserPlants
                 .Include(up => up.Crop)
                 .FirstOrDefaultAsync(up => up.Id == id && up.UserId == userId);
@@ -192,6 +210,7 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "Plant session not found" });
             }
 
+            // Load care tasks for selected plant
             var tasks = await _context.CareTasks
                 .Where(t => t.UserPlantId == userPlant.Id)
                 .OrderBy(t => t.DueDate)
@@ -209,6 +228,7 @@ namespace AgriGuard.API.Controllers
             int totalTasks = tasks.Count;
             int completedTasks = tasks.Count(t => t.IsCompleted);
 
+            // Calculate progress percentage dynamically
             int calculatedProgress = totalTasks > 0
                 ? (int)Math.Round((completedTasks * 100.0) / totalTasks)
                 : 0;
@@ -224,6 +244,7 @@ namespace AgriGuard.API.Controllers
                 await _context.SaveChangesAsync();
             }
 
+            // Return plant details with tasks and progress
             return Ok(new
             {
                 userPlant.Id,

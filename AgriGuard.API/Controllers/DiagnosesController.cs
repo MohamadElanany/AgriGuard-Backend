@@ -13,6 +13,8 @@ namespace AgriGuard.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
+
+    // Require authentication for diagnosis features
     public class DiagnosesController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -33,6 +35,7 @@ namespace AgriGuard.API.Controllers
 
         }
 
+        // Get all diagnosis records
         [HttpGet]
         public async Task<IActionResult> GetAllDiagnoses()
         {
@@ -60,20 +63,24 @@ namespace AgriGuard.API.Controllers
             return Ok(diagnoses);
         }
 
+        // Predict plant disease using AI model
         [HttpPost("predict")]
         public async Task<IActionResult> Predict([FromForm] CreateDiagnosisDto dto)
         {
 
+            // Validate uploaded image
             if (!FileHelper.IsValidImage(dto.Image, out var error))
             {
                 return BadRequest(new { message = error });
             }
 
+            // Ensure plant name is provided
             if (string.IsNullOrWhiteSpace(dto.PlantName))
             {
                 return BadRequest(new { message = "Plant name is required" });
             }
 
+            // Get current authenticated user ID
             var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
             if (string.IsNullOrEmpty(userIdClaim))
@@ -90,6 +97,7 @@ namespace AgriGuard.API.Controllers
                 return Unauthorized(new { message = "User not found" });
             }
 
+            // Load selected plant session if provided
             UserPlant? userPlant = null;
 
             if (dto.UserPlantId.HasValue)
@@ -104,6 +112,7 @@ namespace AgriGuard.API.Controllers
                 }
             }
 
+            // Send image to AI service for prediction
             var prediction = await _aiDiagnosisService.PredictDiseaseAsync(dto.PlantName, dto.Image);
 
             if (prediction == null || !prediction.Success)
@@ -111,7 +120,7 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "AI prediction failed" });
             }
 
-            //  Uncertain case
+            // Handle low-confidence predictions
             if (prediction.Status == "Uncertain")
             {
                 return BadRequest(new
@@ -122,7 +131,7 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
-            //  Mismatch case
+            // Handle plant mismatch predictions
             if (prediction.Status == "Mismatch")
             {
                 return BadRequest(new
@@ -133,12 +142,13 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
-            //  Only allow valid final cases
+            // Allow only final valid prediction states
             if (prediction.Status != "Diseased" && prediction.Status != "Healthy")
             {
                 return BadRequest(new { message = "Unknown AI status" });
             }
 
+            // Define diagnosis image upload folder
             var uploadsFolder = Path.Combine(_environment.WebRootPath, "images", "diagnoses");
 
             if (!Directory.Exists(uploadsFolder))
@@ -146,9 +156,11 @@ namespace AgriGuard.API.Controllers
                 Directory.CreateDirectory(uploadsFolder);
             }
 
+            // Generate unique image file name
             var uniqueFileName = FileHelper.GenerateSafeFileName(dto.Image.FileName);
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
+            // Save diagnosis image to server
             using (var fileStream = new FileStream(filePath, FileMode.Create))
             {
                 await dto.Image.CopyToAsync(fileStream);
@@ -156,6 +168,7 @@ namespace AgriGuard.API.Controllers
 
             var imageUrl = $"/images/diagnoses/{uniqueFileName}";
 
+            // Create diagnosis record
             var diagnosis = new Diagnosis
             {
                 UserId = userId,
@@ -163,6 +176,7 @@ namespace AgriGuard.API.Controllers
                 ImageUrl = imageUrl,
                 DiseaseName = prediction.Disease,
                 Confidence = prediction.Confidence,
+                // Generate default recommendation for healthy plants
                 RecommendedAction = prediction.Status == "Healthy"
                     ? "The plant appears healthy. Keep monitoring it and continue regular care."
                     : "unavailable",
@@ -175,6 +189,7 @@ namespace AgriGuard.API.Controllers
             await _context.Diagnoses.AddAsync(diagnosis);
             await _context.SaveChangesAsync();
 
+            // Prepare response DTO
             var result = new DiagnosisResultDto
             {
                 Id = diagnosis.Id,
@@ -189,11 +204,13 @@ namespace AgriGuard.API.Controllers
             return Ok(result);
         }
 
+        // Generate AI treatment plan
         [HttpPost("treatment")]
         public async Task<IActionResult> GetTreatment([FromBody] GetTreatmentRequestDto dto)
         {
             try
             {
+                // Validate required request data
                 if (dto.DiagnosisId <= 0)
                 {
                     return BadRequest(new { message = "Diagnosis ID is required" });
@@ -217,6 +234,7 @@ namespace AgriGuard.API.Controllers
 
                 int userId = int.Parse(userIdClaim);
 
+                // Load diagnosis for current user
                 var currentDiagnosis = await _context.Diagnoses
                     .FirstOrDefaultAsync(d => d.Id == dto.DiagnosisId && d.UserId == userId);
 
@@ -225,6 +243,7 @@ namespace AgriGuard.API.Controllers
                     return NotFound(new { message = "Diagnosis not found" });
                 }
 
+                // Return cached treatment if already generated
                 if (!string.IsNullOrWhiteSpace(currentDiagnosis.TreatmentPlan))
                 {
                     return Ok(new
@@ -240,6 +259,7 @@ namespace AgriGuard.API.Controllers
                     });
                 }
 
+                // Search for similar cached treatment plans
                 var cachedDiagnosis = await _context.Diagnoses
                     .Where(d =>
                         d.Id != currentDiagnosis.Id &&
@@ -274,6 +294,7 @@ namespace AgriGuard.API.Controllers
                     });
                 }
 
+                // Request treatment plan from AI service
                 var result = await _treatmentService.GetTreatmentPlanAsync(dto);
 
                 if (result == null)
@@ -281,6 +302,7 @@ namespace AgriGuard.API.Controllers
                     return BadRequest(new { message = "Failed to generate treatment plan" });
                 }
 
+                // Save generated treatment data
                 currentDiagnosis.TreatmentPlan = result.TreatmentPlan;
                 currentDiagnosis.PreventionTipsJson = System.Text.Json.JsonSerializer.Serialize(result.PreventionTips);
                 currentDiagnosis.RecommendedProductsJson = System.Text.Json.JsonSerializer.Serialize(result.RecommendedProducts);
@@ -291,6 +313,7 @@ namespace AgriGuard.API.Controllers
 
                 return Ok(result);
             }
+            // Handle unexpected server errors
             catch (Exception ex)
             {
                 return StatusCode(500, new
@@ -301,6 +324,7 @@ namespace AgriGuard.API.Controllers
             }
         }
 
+        // Get diagnosis history for current user
         [HttpGet("my")]
         public async Task<IActionResult> GetMyDiagnoses()
         {
@@ -313,6 +337,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Deserialize stored JSON treatment data
             var diagnosesFromDb = await _context.Diagnoses
                 .Where(d => d.UserId == userId)
                 .OrderByDescending(d => d.DiagnosedAt)
@@ -360,6 +385,7 @@ namespace AgriGuard.API.Controllers
             return Ok(diagnoses);
         }
 
+        // Get diagnosis history for specific plant session
         [HttpGet("plant/{userPlantId}")]
         public async Task<IActionResult> GetDiagnosesByPlant(int userPlantId)
         {
@@ -372,6 +398,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Ensure plant session belongs to current user
             var plantExists = await _context.UserPlants
                 .AnyAsync(up => up.Id == userPlantId && up.UserId == userId);
 

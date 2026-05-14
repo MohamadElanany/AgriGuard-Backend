@@ -2,11 +2,16 @@
 
 namespace AgriGuard.API.Helpers
 {
+    // Helper methods for image validation and file handling
     public static class FileHelper
     {
+        // Supported image extensions
         private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png" };
-        private const long MaxFileSize = 2 * 1024 * 1024; // 2MB
 
+        // Maximum allowed image size (2MB)
+        private const long MaxFileSize = 2 * 1024 * 1024;
+
+        // Validate uploaded image file
         public static bool IsValidImage(IFormFile file, out string errorMessage)
         {
             errorMessage = "";
@@ -40,6 +45,7 @@ namespace AgriGuard.API.Helpers
             return true;
         }
 
+        // Generate unique file name to avoid conflicts
         public static string GenerateSafeFileName(string originalFileName)
         {
             var extension = Path.GetExtension(originalFileName);

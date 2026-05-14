@@ -22,12 +22,15 @@ namespace AgriGuard.API.Controllers
             _environment = environment;
         }
 
+        // Get all community posts
         [Authorize]
         [HttpGet]
         public async Task<IActionResult> GetAllPosts()
         {
+            // Get current user role
             var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
+            // Load posts with related user, comments, and likes
             var query = _context.Posts
                 .Include(p => p.User)
                 .Include(p => p.Comments)
@@ -35,11 +38,13 @@ namespace AgriGuard.API.Controllers
                 .Include(p => p.Likes)
                 .AsQueryable();
 
+            // Non-admin users can only see approved posts
             if (userRole != "Admin")
             {
                 query = query.Where(p => p.Status == "Approved");
             }
 
+            // Get current authenticated user ID
             var currentUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             int currentUserId = 0;
 
@@ -48,6 +53,7 @@ namespace AgriGuard.API.Controllers
                 currentUserId = int.Parse(currentUserIdClaim);
             }
 
+            // Prepare posts response with likes and comments data
             var posts = await query
                 .OrderByDescending(p => p.CreatedAt)
                 .Select(p => new
@@ -81,10 +87,12 @@ namespace AgriGuard.API.Controllers
             return Ok(posts);
         }
 
+        // Create new community post
         [Authorize]
         [HttpPost]
         public async Task<IActionResult> CreatePost([FromForm] CreatePostDto dto)
         {
+
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
             if (string.IsNullOrEmpty(userIdClaim))
@@ -94,26 +102,31 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Ensure user exists
             var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
             if (!userExists)
             {
                 return BadRequest(new { message = "User not found" });
             }
 
+            // Require post content or image
             if (string.IsNullOrWhiteSpace(dto.Content) && dto.Image == null)
             {
                 return BadRequest(new { message = "Post content or image is required" });
             }
 
+            // Store uploaded post image path
             string imageUrl = string.Empty;
 
             if (dto.Image != null && dto.Image.Length > 0)
             {
+                // Validate uploaded image
                 if (!FileHelper.IsValidImage(dto.Image, out var error))
                 {
                     return BadRequest(new { message = error });
                 }
 
+                // Define post image upload folder
                 var uploadsFolder = Path.Combine(_environment.WebRootPath, "images", "posts");
 
                 if (!Directory.Exists(uploadsFolder))
@@ -121,10 +134,12 @@ namespace AgriGuard.API.Controllers
                     Directory.CreateDirectory(uploadsFolder);
                 }
 
-                
+
+                // Generate unique image file name
                 var uniqueFileName = FileHelper.GenerateSafeFileName(dto.Image.FileName);
                 var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
+                // Save image to server
                 using (var fileStream = new FileStream(filePath, FileMode.Create))
                 {
                     await dto.Image.CopyToAsync(fileStream);
@@ -133,11 +148,13 @@ namespace AgriGuard.API.Controllers
                 imageUrl = $"/images/posts/{uniqueFileName}";
             }
 
+            // Create new post entity
             var post = new Post
             {
                 UserId = userId,
                 Content = dto.Content ?? string.Empty,
                 ImageUrl = imageUrl,
+                // Admin posts are approved automatically
                 Status = User.IsInRole("Admin") ? "Approved" : "Pending",
                 CreatedAt = DateTime.UtcNow
             };
@@ -152,6 +169,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Allow admins to approve posts
         [Authorize(Roles = "Admin")]
         [HttpPut("{postId}/approve")]
         public async Task<IActionResult> ApprovePost(int postId)
@@ -163,6 +181,7 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "Post not found" });
             }
 
+            // Update post status to approved
             post.Status = "Approved";
             await _context.SaveChangesAsync();
 
@@ -172,6 +191,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Allow admins to reject posts
         [Authorize(Roles = "Admin")]
         [HttpPut("{postId}/reject")]
         public async Task<IActionResult> RejectPost(int postId)
@@ -183,6 +203,7 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "Post not found" });
             }
 
+            // Update post status to rejected
             post.Status = "Rejected";
             await _context.SaveChangesAsync();
 
@@ -192,6 +213,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Delete post by owner or admin
         [Authorize]
         [HttpDelete("{postId}")]
         public async Task<IActionResult> DeletePost(int postId)
@@ -213,11 +235,13 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "Post not found" });
             }
 
+            // Prevent unauthorized post deletion
             if (userRole != "Admin" && post.UserId != userId)
             {
                 return Forbid();
             }
 
+            // Remove post image from server
             if (!string.IsNullOrWhiteSpace(post.ImageUrl))
             {
                 var relativePath = post.ImageUrl.TrimStart('/').Replace("/", Path.DirectorySeparatorChar.ToString());
@@ -229,6 +253,7 @@ namespace AgriGuard.API.Controllers
                 }
             }
 
+            // Remove post from database
             _context.Posts.Remove(post);
             await _context.SaveChangesAsync();
 
@@ -238,6 +263,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Add comment to community post
         [Authorize]
         [HttpPost("{postId}/comments")]
         public async Task<IActionResult> AddComment(int postId, CreateCommentDto dto)
@@ -268,6 +294,7 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "Comment content is required" });
             }
 
+            // Prevent commenting on unapproved posts
             if (post.Status != "Approved")
             {
                 var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
@@ -277,6 +304,7 @@ namespace AgriGuard.API.Controllers
                 }
             }
 
+            // Create new comment entity
             var comment = new Comment
             {
                 PostId = postId,
@@ -294,6 +322,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Add like to post
         [Authorize]
         [HttpPost("{postId}/like")]
         public async Task<IActionResult> AddLike(int postId)
@@ -328,6 +357,7 @@ namespace AgriGuard.API.Controllers
                 }
             }
 
+            // Prevent duplicate likes
             var alreadyLiked = await _context.Likes
                 .AnyAsync(l => l.PostId == postId && l.UserId == userId);
 
@@ -336,6 +366,7 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "You already liked this post" });
             }
 
+            // Create new like entity
             var like = new Like
             {
                 PostId = postId,
@@ -352,6 +383,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Remove like from post
         [Authorize]
         [HttpDelete("{postId}/like")]
         public async Task<IActionResult> RemoveLike(int postId)
@@ -373,6 +405,7 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "Like not found" });
             }
 
+            // Delete like from database
             _context.Likes.Remove(like);
             await _context.SaveChangesAsync();
 

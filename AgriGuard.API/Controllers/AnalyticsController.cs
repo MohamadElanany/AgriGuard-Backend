@@ -7,6 +7,8 @@ namespace AgriGuard.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+
+    // Restrict analytics access to admins only
     [Authorize(Roles = "Admin")]
     public class AnalyticsController : ControllerBase
     {
@@ -20,8 +22,10 @@ namespace AgriGuard.API.Controllers
         [HttpGet("dashboard")]
         public async Task<IActionResult> GetDashboard()
         {
+            // Get total number of diagnoses
             var totalDiagnoses = await _context.Diagnoses.CountAsync();
 
+            // Get most common detected diseases
             var topDiseases = await _context.Diagnoses
                 .GroupBy(d => d.DiseaseName)
                 .Select(g => new
@@ -33,6 +37,7 @@ namespace AgriGuard.API.Controllers
                 .Take(5)
                 .ToListAsync();
 
+            // Get crops with highest diagnosis count
             var topCrops = await _context.Diagnoses
                 .GroupBy(d => d.CropName)
                 .Select(g => new
@@ -44,6 +49,7 @@ namespace AgriGuard.API.Controllers
                 .Take(5)
                 .ToListAsync();
 
+            // Get locations with highest diagnosis activity
             var topLocations = await _context.Diagnoses
                 .GroupBy(d => d.Governorate)
                 .Select(g => new

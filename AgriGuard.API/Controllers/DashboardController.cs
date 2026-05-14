@@ -8,6 +8,8 @@ namespace AgriGuard.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+
+    // Require authentication for dashboard access
     [Authorize]
     public class DashboardController : ControllerBase
     {
@@ -19,10 +21,11 @@ namespace AgriGuard.API.Controllers
         }
 
 
-
+        // Get dashboard summary data for current user
         [HttpGet("summary")]
         public async Task<IActionResult> GetSummary()
         {
+            // Get current authenticated user ID
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
             if (string.IsNullOrEmpty(userIdClaim))
@@ -32,12 +35,15 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Define today's date range
             var today = DateTime.Today;
             var tomorrow = today.AddDays(1);
 
+            // Count active plant sessions
             var activePlantsCount = await _context.UserPlants
                 .CountAsync(up => up.UserId == userId && up.Status == "InProgress");
 
+            // Count today's pending tasks
             var todayTasksCount = await _context.CareTasks
                 .Include(t => t.UserPlant)
                 .CountAsync(t =>
@@ -46,6 +52,7 @@ namespace AgriGuard.API.Controllers
                     t.DueDate < tomorrow &&
                     !t.IsCompleted);
 
+            // Get latest diagnosis result
             var latestDiagnosis = await _context.Diagnoses
                  .Where(d => d.UserId == userId)
                  .OrderByDescending(d => d.DiagnosedAt)
@@ -60,6 +67,7 @@ namespace AgriGuard.API.Controllers
                  })
                  .FirstOrDefaultAsync();
 
+            // Get latest approved community posts
             var recentPosts = await _context.Posts
                 .Include(p => p.User)
                 .Where(p => p.Status == "Approved")
@@ -78,8 +86,8 @@ namespace AgriGuard.API.Controllers
                     CommentsCount = p.Comments.Count
                 })
                 .ToListAsync();
-
-
+            
+            // Count overdue unfinished tasks
             var overdueTasksCount = await _context.CareTasks
                 .Include(t => t.UserPlant)
                 .CountAsync(t =>
@@ -87,6 +95,7 @@ namespace AgriGuard.API.Controllers
                     !t.IsCompleted &&
                     t.DueDate.Date < today);
 
+            // Return dashboard summary data
             return Ok(new
             {
                 activePlantsCount,

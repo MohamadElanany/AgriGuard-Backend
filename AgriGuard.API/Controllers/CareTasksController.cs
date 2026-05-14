@@ -17,6 +17,7 @@ namespace AgriGuard.API.Controllers
             _context = context;
         }
 
+        // Get all care tasks with related user and crop data
         [HttpGet]
         public async Task<IActionResult> GetAllCareTasks()
         {
@@ -45,6 +46,7 @@ namespace AgriGuard.API.Controllers
         [HttpPut("{id}/complete")]
         public async Task<IActionResult> CompleteTask(int id)
         {
+            // Get current authenticated user ID
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
             if (string.IsNullOrEmpty(userIdClaim))
@@ -54,6 +56,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Find task with related plant data
             var task = await _context.CareTasks
                 .Include(t => t.UserPlant)
                 .FirstOrDefaultAsync(t => t.Id == id);
@@ -73,10 +76,12 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "Task is already completed" });
             }
 
+            // Mark task as completed
             task.IsCompleted = true;
 
             var userPlant = task.UserPlant;
 
+            // Recalculate plant progress after task completion
             var totalTasks = await _context.CareTasks
                 .CountAsync(t => t.UserPlantId == userPlant.Id);
 
@@ -92,6 +97,7 @@ namespace AgriGuard.API.Controllers
                 userPlant.ProgressPercentage = 0;
             }
 
+            // Update plant status based on completed tasks
             userPlant.Status = completedTasks == totalTasks && totalTasks > 0
                 ? "Completed"
                 : "InProgress";
@@ -108,6 +114,8 @@ namespace AgriGuard.API.Controllers
 
         [Authorize]
         [HttpGet("my")]
+
+        // Get all care tasks for current user
         public async Task<IActionResult> GetMyCareTasks()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -135,6 +143,7 @@ namespace AgriGuard.API.Controllers
                     t.Description,
                     t.DueDate,
                     t.IsCompleted,
+                    // Generate task status dynamically
                     Status = t.IsCompleted
                     ? "Completed"
                     : t.DueDate.Date < DateTime.Today
@@ -148,6 +157,8 @@ namespace AgriGuard.API.Controllers
 
         [Authorize]
         [HttpGet("today")]
+
+        // Get today's tasks only
         public async Task<IActionResult> GetTodayCareTasks()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -159,6 +170,7 @@ namespace AgriGuard.API.Controllers
 
             int userId = int.Parse(userIdClaim);
 
+            // Define today's date range
             var today = DateTime.Today;
             var tomorrow = today.AddDays(1);
 
@@ -197,6 +209,8 @@ namespace AgriGuard.API.Controllers
 
         [Authorize]
         [HttpGet("overdue")]
+
+        // Get overdue tasks for current user
         public async Task<IActionResult> GetOverdueTasks()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

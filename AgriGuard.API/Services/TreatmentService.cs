@@ -5,6 +5,7 @@ using AgriGuard.API.DTOs;
 
 namespace AgriGuard.API.Services
 {
+    // Service responsible for generating AI treatment plans
     public class TreatmentService
     {
         private readonly HttpClient _httpClient;
@@ -16,8 +17,10 @@ namespace AgriGuard.API.Services
             _configuration = configuration;
         }
 
+        // Request treatment recommendation from Gemini API
         public async Task<TreatmentResultDto?> GetTreatmentPlanAsync(GetTreatmentRequestDto dto)
         {
+            // Read Gemini configuration
             var apiKey = _configuration["Gemini:ApiKey"];
             var model = _configuration["Gemini:Model"] ?? "gemini-2.5-flash";
 
@@ -26,30 +29,32 @@ namespace AgriGuard.API.Services
                 throw new Exception("Gemini API key is missing.");
             }
 
+            // Build structured prompt for treatment generation
             var prompt = $@"
-You are an agricultural assistant.
-Return a treatment plan for a plant disease in valid JSON only.
+                You are an agricultural assistant.
+                Return a treatment plan for a plant disease in valid JSON only.
 
-Disease Name: {dto.DiseaseName}
-Crop Name: {dto.CropName}
-Country: {dto.Country}
-Governorate: {dto.Governorate}
+                Disease Name: {dto.DiseaseName}
+                Crop Name: {dto.CropName}
+                Country: {dto.Country}
+                Governorate: {dto.Governorate}
 
-Return JSON with exactly these fields:
-- treatmentPlan: string
-- preventionTips: array of strings
-- recommendedProducts: array of strings
-- notes: string
+                Return JSON with exactly these fields:
+                - treatmentPlan: string
+                - preventionTips: array of strings
+                - recommendedProducts: array of strings
+                - notes: string
 
-Rules:
-- Give practical treatment advice.
-- Include prevention tips.
-- Include common product types only.
-- Keep the answer concise and clear.
-- Consider the location when giving advice.
-- Return valid JSON only, with no markdown.
-";
+                Rules:
+                - Give practical treatment advice.
+                - Include prevention tips.
+                - Include common product types only.
+                - Keep the answer concise and clear.
+                - Consider the location when giving advice.
+                - Return valid JSON only, with no markdown.
+                ";
 
+            // Prepare Gemini request body
             var requestBody = new
             {
                 contents = new object[]
@@ -74,17 +79,19 @@ Rules:
             var url =
                 $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
 
+            // Send request to Gemini API
             var response = await _httpClient.PostAsync(url, content);
 
             var responseJson = await response.Content.ReadAsStringAsync();
-            Console.WriteLine("Gemini Raw Response:");
-            Console.WriteLine(responseJson);
+            //Console.WriteLine("Gemini Raw Response:");
+            //Console.WriteLine(responseJson);
 
             if (!response.IsSuccessStatusCode)
             {
                 throw new Exception($"Gemini request failed: {responseJson}");
             }
 
+            // Extract generated JSON text from Gemini response
             using var doc = JsonDocument.Parse(responseJson);
 
             var text = doc.RootElement
@@ -99,6 +106,7 @@ Rules:
                 throw new Exception("Gemini returned empty content.");
             }
 
+            // Deserialize AI response into DTO
             var result = JsonSerializer.Deserialize<TreatmentResultDto>(
                 text,
                 new JsonSerializerOptions

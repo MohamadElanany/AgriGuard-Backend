@@ -29,8 +29,10 @@ namespace AgriGuard.API.Controllers
             _emailService = emailService;
         }
 
+        // Generate JWT token for authenticated user
         private string GenerateJwtToken(User user)
         {
+            // Define user claims in token
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -44,6 +46,7 @@ namespace AgriGuard.API.Controllers
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            // Create signed JWT token
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:Issuer"],
                 audience: _configuration["Jwt:Audience"],
@@ -55,6 +58,7 @@ namespace AgriGuard.API.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        // Allow admins to view all users
         [Authorize(Roles = "Admin")]
         [HttpGet]
         public async Task<IActionResult> GetAllUsers()
@@ -76,9 +80,11 @@ namespace AgriGuard.API.Controllers
             return Ok(users);
         }
 
+        // Register new user account
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDto dto)
         {
+            // Prevent duplicate email registration
             var existingUser = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email == dto.Email);
 
@@ -94,6 +100,7 @@ namespace AgriGuard.API.Controllers
             {
                 FullName = dto.FullName,
                 Email = dto.Email,
+                // Hash password before saving
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Country = dto.Country,
                 Governorate = dto.Governorate,
@@ -112,6 +119,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Authenticate user and generate token
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginDto dto)
         {
@@ -126,6 +134,7 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
+            // Verify hashed password
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
 
             if (!isPasswordValid)
@@ -136,6 +145,7 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
+            // Prevent blocked users from logging in
             if (user.IsBlocked)
             {
                 return Unauthorized(new
@@ -144,6 +154,7 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
+            // Generate authentication token
             var token = GenerateJwtToken(user);
 
             return Ok(new
@@ -157,6 +168,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Get current user profile data
         [Authorize]
         [HttpGet("profile")]
         public async Task<IActionResult> GetProfile()
@@ -181,6 +193,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Update user profile information
         [Authorize]
         [HttpPut("update-profile")]
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
@@ -202,6 +215,7 @@ namespace AgriGuard.API.Controllers
             return Ok(new { message = "Profile updated successfully" });
         }
 
+        // Upload and update profile image
         [Authorize]
         [HttpPost("upload-profile-image")]
         public async Task<IActionResult> UploadProfileImage(IFormFile image)
@@ -209,6 +223,7 @@ namespace AgriGuard.API.Controllers
             if (image == null || image.Length == 0)
                 return BadRequest(new { message = "No image uploaded" });
 
+            // Validate uploaded profile image
             if (!FileHelper.IsValidImage(image, out var error))
             {
                 return BadRequest(new { message = error });
@@ -220,15 +235,18 @@ namespace AgriGuard.API.Controllers
 
             var userId = int.Parse(userIdClaim);
 
+            // Define profile image upload folder
             var uploadsFolder = Path.Combine("wwwroot", "images", "profiles");
             if (!Directory.Exists(uploadsFolder))
             {
                 Directory.CreateDirectory(uploadsFolder);
             }
 
+            // Generate unique profile image name
             var fileName = FileHelper.GenerateSafeFileName(image.FileName);
             var filePath = Path.Combine(uploadsFolder, fileName);
 
+            // Save profile image to server
             using (var stream = new FileStream(filePath, FileMode.Create))
             {
                 await image.CopyToAsync(stream);
@@ -245,6 +263,7 @@ namespace AgriGuard.API.Controllers
             return Ok(new { imageUrl = user.ProfileImageUrl });
         }
 
+        // Get public profile by user ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetUserById(int id)
         {
@@ -270,6 +289,7 @@ namespace AgriGuard.API.Controllers
             return Ok(user);
         }
 
+        // Allow admins to block users
         [Authorize(Roles = "Admin")]
         [HttpPut("{id}/block")]
         public async Task<IActionResult> BlockUser(int id)
@@ -281,11 +301,13 @@ namespace AgriGuard.API.Controllers
                 return NotFound(new { message = "User not found" });
             }
 
+            // Prevent blocking admin accounts
             if (user.Role == "Admin")
             {
                 return BadRequest(new { message = "Admin user cannot be blocked" });
             }
 
+            // Mark user as blocked
             if (user.IsBlocked)
             {
                 return BadRequest(new { message = "User is already blocked" });
@@ -300,6 +322,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Allow admins to unblock users
         [Authorize(Roles = "Admin")]
         [HttpPut("{id}/unblock")]
         public async Task<IActionResult> UnblockUser(int id)
@@ -316,6 +339,7 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "User is not blocked" });
             }
 
+            // Remove blocked status from user
             user.IsBlocked = false;
             await _context.SaveChangesAsync();
 
@@ -325,6 +349,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Send password reset verification code
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordDto dto)
         {
@@ -339,6 +364,7 @@ namespace AgriGuard.API.Controllers
                 });
             }
 
+            // Generate 6-digit reset code
             var code = Random.Shared.Next(100000, 999999).ToString();
 
             user.PasswordResetCode = code;
@@ -356,6 +382,7 @@ namespace AgriGuard.API.Controllers
                 <p>This code will expire in 10 minutes.</p>
             ";
 
+            // Send reset code via email
             await _emailService.SendEmailAsync(user.Email, subject, body);
 
             return Ok(new
@@ -364,6 +391,7 @@ namespace AgriGuard.API.Controllers
             });
         }
 
+        // Verify password reset code
         [HttpPost("verify-reset-code")]
         public async Task<IActionResult> VerifyResetCode(VerifyResetCodeDto dto)
         {
@@ -379,6 +407,7 @@ namespace AgriGuard.API.Controllers
             if (user.IsPasswordResetCodeUsed)
                 return BadRequest(new { message = "Code already used" });
 
+            // Check reset code expiration
             if (user.PasswordResetCodeExpiresAt == null ||
                 user.PasswordResetCodeExpiresAt < DateTime.UtcNow)
             {
@@ -388,6 +417,7 @@ namespace AgriGuard.API.Controllers
             return Ok(new { message = "Code verified successfully" });
         }
 
+        // Reset user password
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword(ResetPasswordDto dto)
         {
@@ -409,6 +439,7 @@ namespace AgriGuard.API.Controllers
                 return BadRequest(new { message = "Code expired" });
             }
 
+            // Store new hashed password
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
             user.PasswordResetCode = null;
             user.PasswordResetCodeExpiresAt = null;
@@ -419,6 +450,7 @@ namespace AgriGuard.API.Controllers
             return Ok(new { message = "Password reset successfully" });
         }
 
+        // Update account settings and credentials
         [Authorize]
         [HttpPut("settings")]
         public async Task<IActionResult> UpdateAccountSettings([FromBody] UpdateAccountSettingsDto dto)
@@ -430,12 +462,14 @@ namespace AgriGuard.API.Controllers
             if (user == null)
                 return NotFound(new { message = "User not found" });
 
+            // Prevent duplicate email updates
             var emailExists = await _context.Users
                 .AnyAsync(u => u.Email == dto.Email && u.Id != userId);
 
             if (emailExists)
                 return BadRequest(new { message = "Email already exists" });
 
+            // Handle password change request
             if (!string.IsNullOrWhiteSpace(dto.NewPassword))
             {
                 if (string.IsNullOrWhiteSpace(dto.CurrentPassword))
@@ -446,6 +480,7 @@ namespace AgriGuard.API.Controllers
                     });
                 }
 
+                // Verify current password before updating
                 var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(
                     dto.CurrentPassword,
                     user.PasswordHash
@@ -470,6 +505,7 @@ namespace AgriGuard.API.Controllers
 
             await _context.SaveChangesAsync();
 
+            // Generate updated token after account changes
             var newToken = GenerateJwtToken(user);
 
             return Ok(new

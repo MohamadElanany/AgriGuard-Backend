@@ -18,6 +18,7 @@ namespace AgriGuard.API.Controllers
             _context = context;
         }
 
+        // Get all task templates with related crop data
         [HttpGet]
         public async Task<IActionResult> GetAllTemplates()
         {
@@ -38,16 +39,19 @@ namespace AgriGuard.API.Controllers
             return Ok(templates);
         }
 
+        // Allow only admins to create templates
         [Authorize(Roles = "Admin")]
         [HttpPost]
         public async Task<IActionResult> CreateTemplate(CreateCareTaskTemplateDto dto)
         {
+            // Validate crop existence before creating template
             var cropExists = await _context.Crops.AnyAsync(c => c.Id == dto.CropId);
             if (!cropExists)
             {
                 return BadRequest(new { message = "Crop not found" });
             }
 
+            // Create new care task template
             var template = new CareTaskTemplate
             {
                 CropId = dto.CropId,
@@ -57,6 +61,7 @@ namespace AgriGuard.API.Controllers
                 TaskCategory = dto.TaskCategory
             };
 
+            // Save template to database
             await _context.CareTaskTemplates.AddAsync(template);
             await _context.SaveChangesAsync();
 
